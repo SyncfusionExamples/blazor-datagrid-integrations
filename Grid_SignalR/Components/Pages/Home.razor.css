@@ -1,0 +1,73 @@
+/* Grid Styling */
+:deep .e-grid {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+:deep .e-gridheader {
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+
+:deep .e-grid tr {
+    transition: background-color 0.2s ease;
+}
+
+:deep .e-grid tbody tr:hover {
+    background-color: #f0f8ff;
+}
+
+:deep .e-grid .e-selectionbackground {
+    background-color: #cfe9ff !important;
+}
+
+/* Card Styling */
+.card {
+    border: none;
+    border-radius: 8px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
+}
+
+.badge {
+    font-size: 1.1rem;
+    padding: 0.5rem 1rem;
+}
+
+/* Price Cell Styling */
+.price-cell {
+    font-weight: bold;
+    color: #1a73e8;
+}
+
+/* Change Cell Styling */
+.change-cell-positive {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.change-cell-negative {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+/* Change Percent Cell Styling */
+.change-percent-positive {
+    background-color: #d4edda;
+    color: #155724;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+.change-percent-negative {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+}
