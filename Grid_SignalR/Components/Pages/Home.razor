@@ -1,0 +1,153 @@
+@page "/"
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Http.Connections
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+<PageTitle>Stock Market - Real-time Updates</PageTitle>
+
+<div class="container-fluid mt-4">
+    <h1 class="mb-4">
+        <span class="badge bg-success">Live Stock Market</span>
+    </h1>
+
+    <div class="card shadow-lg">
+        <div class="card-body">
+            <SfGrid @ref="grid" TValue="Stock" Height="500" AllowSorting="true" AllowFiltering="true" Toolbar=@ToolbarItems>
+                <SfDataManager AdaptorInstance="@typeof(StockAdaptor)" Adaptor="Adaptors.CustomAdaptor"></SfDataManager>
+                <GridFilterSettings Type="Syncfusion.Blazor.Grids.FilterType.Menu"></GridFilterSettings>
+
+                <GridColumns>
+                    <GridColumn Field=@nameof(Stock.StockId) HeaderText="ID" IsPrimaryKey="true" Width="60"></GridColumn>
+                    <GridColumn Field=@nameof(Stock.Symbol) HeaderText="Symbol" Width="80"></GridColumn>
+                    <GridColumn Field=@nameof(Stock.Company) HeaderText="Company" Width="200"></GridColumn>
+
+                    <GridColumn Field=@nameof(Stock.CurrentPrice) HeaderText="Current Price" Width="120" Format="N2">
+                        <Template>
+                            @{
+                                var stock = context as Stock;
+                                <span class="price-cell">
+                                    $@stock?.CurrentPrice.ToString("N2")
+                                </span>
+                            }
+                        </Template>
+                    </GridColumn>
+
+                    <GridColumn Field=@nameof(Stock.Change) HeaderText="Change" Width="100" Format="N2">
+                        <Template>
+                            @{
+                                var stock = context as Stock;
+                                var isPositive = stock?.Change >= 0;
+                                var cssClass = isPositive ? "change-cell-positive" : "change-cell-negative";
+                                var symbol = isPositive ? "▲" : "▼";
+                                <span class="@cssClass">
+                                    @symbol $@stock?.Change.ToString("N2")
+                                </span>
+                            }
+                        </Template>
+                    </GridColumn>
+
+                    <GridColumn Field=@nameof(Stock.ChangePercent) HeaderText="Change %" Width="100" Format="N2">
+                        <Template>
+                            @{
+                                var stock = context as Stock;
+                                var isPositive = stock?.ChangePercent >= 0;
+                                var cssClass = isPositive ? "change-percent-positive" : "change-percent-negative";
+                                var symbol = isPositive ? "+" : "";
+                                <span class="@cssClass">
+                                    @symbol@stock?.ChangePercent%
+                                </span>
+                            }
+                        </Template>
+                    </GridColumn>
+
+                    <GridColumn Field=@nameof(Stock.Volume) HeaderText="Volume" Width="120" Format="N0"></GridColumn>
+
+                    <GridColumn Field=@nameof(Stock.LastUpdated) HeaderText="Last Updated" Width="150" Format="yyyy-MM-dd HH:mm:ss"></GridColumn>
+                </GridColumns>
+            </SfGrid>
+        </div>
+    </div>
+</div>
+
+
+@code {
+    private SfGrid<Stock>? grid;
+    private HubConnection? hubConnection;
+    private static readonly Random ReconnectRandom = new();
+    private static readonly List<string> ToolbarItems = new() { "Search" };
+
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var hubUri = NavigationManager.ToAbsoluteUri("/stockhub");
+
+        hubConnection = new HubConnectionBuilder()
+        .WithUrl(hubUri, options =>
+        {
+            options.Transports = HttpTransportType.WebSockets;
+        })
+        .WithAutomaticReconnect(new[]
+        {
+            TimeSpan.Zero,
+            TimeSpan.FromSeconds(2),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromSeconds(30)
+        })
+        .Build();
+
+        hubConnection.On<List<Stock>>("ReceiveStockUpdate", async (_) => await RefreshGrid());
+        hubConnection.On<List<Stock>>("InitializeStocks", async (_) => await RefreshGrid());
+
+        hubConnection.Reconnected += async (_) =>
+        {
+            await hubConnection.SendAsync("SubscribeToStocks");
+        };
+        hubConnection.Closed += async (error) =>
+        {
+            if (error != null)
+            {
+                Console.Error.WriteLine($"Hub connection closed with error: {error.Message}");
+            }
+
+            // Wait before attempting to reconnect with random backoff
+            await Task.Delay(ReconnectRandom.Next(0, 5000));
+            try
+            {
+                await hubConnection.StartAsync();
+            }
+            catch
+            {
+                // Connection failed, will retry on next interval
+            }
+        };
+
+        try
+        {
+            await hubConnection.StartAsync();
+            await hubConnection.SendAsync("SubscribeToStocks");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"SignalR start failed: {ex.Message}");
+        }
+    }
+
+    private async Task RefreshGrid()
+    {
+        if (grid != null)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        if (hubConnection is not null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+}
