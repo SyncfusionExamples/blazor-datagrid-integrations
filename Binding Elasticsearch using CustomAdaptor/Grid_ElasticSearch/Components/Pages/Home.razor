@@ -1,0 +1,411 @@
+﻿@page "/"
+@using System.Collections
+@rendermode InteractiveServer
+@inject InventoryRepository InventoryService
+
+<PageTitle>Inventory Stock Control System</PageTitle>
+
+<section class="container-fluid py-4">
+    
+    <!-- Syncfusion DataGrid Component -->
+    <SfGrid @ref="gridRef"
+            TValue="InventoryStock"
+            Width="100%"
+            AllowPaging="true"
+            AllowSorting="true"
+            AllowFiltering="true"
+            AllowSelection="true"
+            Toolbar="@ToolbarItems">
+
+        <!-- Data Manager with Custom Adaptor for direct EF Core binding -->
+        <SfDataManager AdaptorInstance="@typeof(CustomAdaptor)" Adaptor="Adaptors.CustomAdaptor"></SfDataManager>
+        <GridFilterSettings Type="Syncfusion.Blazor.Grids.FilterType.Menu"></GridFilterSettings>
+        <GridEditSettings AllowEditing="true"
+                          AllowAdding="true"
+                          AllowDeleting="true"
+                          Mode="EditMode.Normal">
+        </GridEditSettings>
+        <GridPageSettings PageSize="10"></GridPageSettings>
+        <!-- Columns Definition -->
+        <GridColumns>
+            <!-- Primary Key Column (Hidden from user) -->
+            <GridColumn Field=@nameof(InventoryStock.ItemId)
+                        IsPrimaryKey="true"
+                        IsIdentity="true"
+                        HeaderText="Item ID"
+                        Width="100"
+                        AllowGrouping="false">
+            </GridColumn>
+
+            <!-- SKU Column -->
+            <GridColumn Field=@nameof(InventoryStock.SKU)
+                        HeaderText="SKU"
+                        Width="140">
+            </GridColumn>
+
+            <!-- Item Name Column -->
+            <GridColumn Field=@nameof(InventoryStock.ItemName)
+                        HeaderText="Item Name"
+                        Width="180"
+                        ClipMode="ClipMode.EllipsisWithTooltip">
+            </GridColumn>
+
+            <!-- Category Column (Dropdown) -->
+            <GridColumn Field=@nameof(InventoryStock.Category)
+                        HeaderText="Category"
+                        Width="160"
+                        EditType="EditType.DropDownEdit"
+                        EditorSettings="@CategoryDropDownParams">
+            </GridColumn>
+
+            <!-- Supplier Column -->
+            <GridColumn Field=@nameof(InventoryStock.Supplier)
+                        HeaderText="Supplier"
+                        Width="160">
+            </GridColumn>
+
+            <!-- Unit Price Column (Currency format) -->
+            <GridColumn Field=@nameof(InventoryStock.UnitPrice)
+                        HeaderText="Unit Price"
+                        Width="160"
+                        Format="C2"
+                        TextAlign="TextAlign.Right">
+                <Template>
+                    @{
+                        var data = (InventoryStock)context;
+                    }
+                    <span>@data.UnitPrice.ToString("C2")</span>
+                </Template>
+            </GridColumn>
+
+            <!-- Quantity in Stock Column -->
+            <GridColumn Field=@nameof(InventoryStock.QuantityInStock)
+                        HeaderText="Qty in Stock"
+                        Width="160"
+                        TextAlign="TextAlign.Right">
+            </GridColumn>
+
+            <!-- Reorder Level Column -->
+            <GridColumn Field=@nameof(InventoryStock.ReorderLevel)
+                        HeaderText="Reorder Level"
+                        Width="160"
+                        TextAlign="TextAlign.Right">
+            </GridColumn>
+
+            <!-- Reorder Quantity Column -->
+            <GridColumn Field=@nameof(InventoryStock.ReorderQuantity)
+                        HeaderText="Reorder Qty"
+                        Width="160"
+                        TextAlign="TextAlign.Right">
+            </GridColumn>
+
+            <!-- Warehouse Column -->
+            <GridColumn Field=@nameof(InventoryStock.Warehouse)
+                        HeaderText="Warehouse"
+                        Width="160">
+            </GridColumn>
+
+            <!-- Last Restocked Column (Date format) -->
+            <GridColumn Field=@nameof(InventoryStock.LastRestocked)
+                        HeaderText="Last Restocked"
+                        Width="165"
+                        Format="MMM d, yyyy">
+            </GridColumn>
+
+            <!-- Status Column (Badge with color) -->
+            <GridColumn Field=@nameof(InventoryStock.Status)
+                        HeaderText="Status"
+                        Width="160"
+                        EditType="EditType.DropDownEdit"
+                        EditorSettings="@StatusDropDownParams">
+                <Template>
+                    @{
+                        var data = (InventoryStock)context;
+                    }
+                    <span class="badge @GetStatusBadgeClass(data.Status)">
+                        @data.Status
+                    </span>
+                </Template>
+            </GridColumn>
+        </GridColumns>
+        <GridAggregates>
+            <GridAggregate>
+                <GridAggregateColumns>
+                    <GridAggregateColumn Field=@nameof(InventoryStock.QuantityInStock) Type="AggregateType.Sum" >
+                        <FooterTemplate>
+                            @{
+                                var aggregate = (context as AggregateTemplateContext);
+                                <div>
+                                    <p>Sum: @aggregate.Sum</p>
+                                </div>
+                            }
+                        </FooterTemplate>
+                    </GridAggregateColumn>
+                </GridAggregateColumns>
+            </GridAggregate>
+            <GridAggregate>
+                <GridAggregateColumns>
+                    <GridAggregateColumn Field=@nameof(InventoryStock.QuantityInStock) Type="AggregateType.Max" >
+                        <FooterTemplate>
+                            @{
+                                var aggregate = (context as AggregateTemplateContext);
+                                <div>
+                                    <p>Max: @aggregate.Max</p>
+                                </div>
+                            }
+                        </FooterTemplate>
+                    </GridAggregateColumn>
+                </GridAggregateColumns>
+            </GridAggregate>
+        </GridAggregates>
+    </SfGrid>
+</section>
+
+@code {
+    private CustomAdaptor? _customAdaptor;
+
+    /// <summary>
+    /// CustomAdaptor class bridges DataGrid interactions with database operations via repository.
+    /// This adaptor handles all data retrieval and CRUD operations for the DataGrid.
+    /// </summary>
+    public class CustomAdaptor : DataAdaptor
+    {
+        private static InventoryRepository? _inventoryService;
+
+        public InventoryRepository? InventoryService
+        {
+            get => _inventoryService;
+            set => _inventoryService = value;
+        }
+
+        /// <summary>
+        /// ReadAsync retrieves records from ElasticSearch with optimized search, filter, sort, and pagination.
+        /// Uses ElasticSearch QueryDSL instead of DataOperations for better performance and scalability.
+        /// </summary>
+        public override async Task<object> ReadAsync(DataManagerRequest dataManagerRequest, string? key = null)
+        {
+            try
+            {
+                var result = await _inventoryService.SearchAndFilterAsync(dataManagerRequest);
+                IEnumerable dataSource = result.Result ?? new List<InventoryStock>();
+
+                return dataManagerRequest.RequiresCounts ? new DataResult() { Result = dataSource, Count = result.Count, Aggregates = result.Aggregates } : (object)dataSource;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in ReadAsync: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// InsertAsync adds a new inventory item to the database
+        /// </summary>
+        public override async Task<object> InsertAsync(DataManager dataManager, object value, string? key)
+        {
+            try
+            {
+                if (value is InventoryStock item)
+                {
+                    await _inventoryService!.AddInventoryItemAsync(item);
+                }
+                return value;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in InsertAsync: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// UpdateAsync modifies an existing inventory item
+        /// </summary>
+        public override async Task<object> UpdateAsync(DataManager dataManager, object value, string? keyField, string? key)
+        {
+            try
+            {
+                if (value is InventoryStock item)
+                {
+                    await _inventoryService!.UpdateInventoryItemAsync(item);
+                }
+                return value;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in UpdateAsync: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// RemoveAsync deletes an inventory item from the database
+        /// </summary>
+        public override async Task<object> RemoveAsync(DataManager dataManager, object value, string? keyField, string? key)
+        {
+            try
+            {
+                if (value is InventoryStock item)
+                {
+                    await _inventoryService!.RemoveInventoryItemAsync(item.ItemId);
+                }
+                else if (int.TryParse(value?.ToString(), out int itemId))
+                {
+                    await _inventoryService!.RemoveInventoryItemAsync(itemId);
+                }
+                return value;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in RemoveAsync: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// BatchUpdateAsync handles bulk add/edit/delete operations
+        /// </summary>
+        public override async Task<object> BatchUpdateAsync(DataManager dataManager, object? changed, object? added, object? deleted, string? keyField, string? key, int? dropIndex)
+        {
+            try
+            {
+                // Process updated records
+                if (changed != null)
+                {
+                    foreach (var item in (IEnumerable<InventoryStock>)changed)
+                    {
+                        await _inventoryService!.UpdateInventoryItemAsync(item);
+                    }
+                }
+
+                // Process newly added records
+                if (added != null)
+                {
+                    foreach (var item in (IEnumerable<InventoryStock>)added)
+                    {
+                        await _inventoryService!.AddInventoryItemAsync(item);
+                    }
+                }
+
+                // Process deleted records
+                if (deleted != null)
+                {
+                    foreach (var item in (IEnumerable<InventoryStock>)deleted)
+                    {
+                        await _inventoryService!.RemoveInventoryItemAsync(item.ItemId);
+                    }
+                }
+
+                return key;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in BatchUpdateAsync: {ex.Message}");
+                throw;
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// Static category options for dropdown
+    /// </summary>
+    private static List<InventoryStock> CategoryOptions = new List<InventoryStock>
+    {
+        new InventoryStock() { Category = "Electronics" },
+        new InventoryStock() { Category = "Hardware" },
+        new InventoryStock() { Category = "Software" },
+        new InventoryStock() { Category = "Office Supplies" },
+        new InventoryStock() { Category = "Furniture" },
+        new InventoryStock() { Category = "Other" },
+    };
+
+    /// <summary>
+    /// Toolbar items for DataGrid (CRUD operations and search)
+    /// </summary>
+    private List<string> ToolbarItems = new List<string>
+    {
+        "Add", "Edit", "Delete", "Update", "Cancel", "Search"
+    };
+
+    // ========== DROPDOWN EDITOR DATA ==========
+    /// <summary>
+    /// Category dropdown editor settings
+    /// </summary>
+    private IEditorSettings? CategoryDropDownParams;
+
+    /// <summary>
+    /// Static status options for dropdown
+    /// </summary>
+    private static List<InventoryStock> StatusOptions = new List<InventoryStock>
+    {
+        new InventoryStock() { Status =  "Active"},
+        new InventoryStock() { Status =  "Inactive"},
+        new InventoryStock() { Status =  "Discontinued"},
+        new InventoryStock() { Status =  "Backordered"},
+    };
+
+    /// <summary>
+    /// Status dropdown editor settings
+    /// </summary>
+    private IEditorSettings? StatusDropDownParams;
+
+    /// <summary>
+    /// Initialize dropdown settings
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        
+        if (InventoryService != null)
+        {
+            _customAdaptor = new CustomAdaptor { InventoryService = InventoryService };
+        }
+        else
+        {
+            Console.WriteLine("Warning: InventoryService is null in OnInitialized");
+        }
+
+        // Initialize category dropdown with proper data source
+        CategoryDropDownParams = new DropDownEditCellParams
+        {
+            Params = new Syncfusion.Blazor.DropDowns.DropDownListModel<object, object>()
+            {
+                DataSource = CategoryOptions,
+                AllowFiltering = true
+            }
+        };
+
+        // Initialize status dropdown with proper data source
+        StatusDropDownParams = new DropDownEditCellParams
+        {
+            Params = new Syncfusion.Blazor.DropDowns.DropDownListModel<object, object>()
+            {
+                DataSource = StatusOptions,
+                AllowFiltering = true
+            }
+        };
+    }
+
+
+    // Reference to the DataGrid for refresh operations
+    private SfGrid<InventoryStock>? gridRef;
+
+    // ========== HELPER METHODS ==========
+
+    /// <summary>
+    /// Returns CSS class for status badge styling
+    /// </summary>
+    private string GetStatusBadgeClass(string? status)
+    {
+        return (status?.ToLower() ?? "unknown") switch
+        {
+            "active" => "bg-success text-white",
+            "inactive" => "bg-secondary text-white",
+            "discontinued" => "bg-danger text-white",
+            "backordered" => "bg-warning text-dark",
+            _ => "bg-light text-dark"
+        };
+    }
+}
+
